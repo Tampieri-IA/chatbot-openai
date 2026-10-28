@@ -1,0 +1,17 @@
+spring:
+  application:
+    name: chatbot-openai
+  profiles:
+      active: mock
+
+server:
+  port: 8080
+
+openai:
+  api:
+    key: ${OPENAI_API_KEY}
+    model: gpt-4o-mini
+
+springdoc:
+  swagger-ui:
+    path: /swagger-ui.html
