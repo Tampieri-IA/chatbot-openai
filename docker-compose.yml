@@ -1,109 +1,21 @@
-# Versão do schema do Compose. A partir da v3.x não é mais obrigatório
-# declarar, mas deixamos por clareza.
-version: "3.9"
-
 services:
-  # Nome do serviço. Vira o DNS interno da rede.
-  # Outros containers podem acessar este por "postgres:5432".
   postgres:
     image: postgres:16-alpine
-    container_name: spring-boot-docker-postgres
-
+    container_name: chatbot-postgres
     environment:
-      POSTGRES_DB: chatbotdb
-      POSTGRES_USER: chatbot_user
-      POSTGRES_PASSWORD: chatbot_pass
-
+      POSTGRES_DB: ${POSTGRES_DB:-chatbotdb}
+      POSTGRES_USER: ${POSTGRES_USER:-chatbot_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?defina POSTGRES_PASSWORD no arquivo .env}
     ports:
       - "5432:5432"
-
-    # Volume nomeado: garante que os dados do banco sobrevivem
-    # mesmo se o container for removido (docker-compose down sem -v).
     volumes:
       - postgres-data:/var/lib/postgresql/data
-
-    # Healthcheck específico do Postgres: usa o próprio utilitário
-    # pg_isready pra saber quando o banco está pronto pra aceitar conexões.
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U chatbot_user -d chatbotdb"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-chatbot_user} -d ${POSTGRES_DB:-chatbotdb}"]
       interval: 5s
       timeout: 5s
       retries: 5
-
     restart: unless-stopped
 
-    networks:
-      - app-network
-
-  # Nome do serviço. Vira o DNS interno da rede.
-  # Outros containers podem acessar este por "api:8080".
-  api:
-    # Onde está o Dockerfile que vamos buildar.
-    # "." significa "no diretório deste docker-compose.yml".
-    build:
-      context: .
-      dockerfile: Dockerfile
-
-    # Nome fixo do container (sem isso, o Compose gera um nome aleatório).
-    container_name: spring-boot-docker-chatbotdb
-
-    # Só sobe a API depois que o Postgres responder "healthy",
-    # evitando o erro clássico de conexão recusada no boot.
-    depends_on:
-      postgres:
-        condition: service_healthy
-
-    # Mapeamento de porta: HOST:CONTAINER
-    # 8080 (fora) → 8080 (dentro).
-    # Se a 8080 do host estiver ocupada, troque para "8081:8080".
-    ports:
-      - "8080:8080"
-
-    # Variáveis de ambiente passadas ao container.
-    # O Spring Boot lê automaticamente variáveis no formato SPRING_*,
-    # sobrescrevendo o application.properties.
-    environment:
-      # Agora aponta pro Postgres real (serviço "postgres" acima),
-      # não mais pro H2 em memória.
-      SPRING_DATASOURCE_URL: "jdbc:postgresql://postgres:5432/chatbotdb"
-      SPRING_DATASOURCE_USERNAME: "chatbot_user"
-      SPRING_DATASOURCE_PASSWORD: "chatbot_pass"
-      SPRING_JPA_HIBERNATE_DDL_AUTO: "update"
-      SPRING_PROFILES_ACTIVE: "default"
-      # Ativa logs mais verbosos do Spring para estudo.
-      LOGGING_LEVEL_COM_TAMPIERIA: "DEBUG"
-
-    # Limita os recursos que o container pode usar.
-    # Deixa o -XX:MaxRAMPercentage trabalhar com um teto claro.
-    deploy:
-      resources:
-        limits:
-          cpus: "1.0"
-          memory: 512M
-
-    # Healthcheck: o Docker executa um comando periódico para saber
-    # se o container está saudável. Útil para o Compose saber quando
-    # o container está "pronto" antes de subir dependências.
-    healthcheck:
-      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8080/actuator/health"]
-      interval: 30s
-      timeout: 5s
-      retries: 3
-      start_period: 40s
-
-    # Política de restart: reinicia automaticamente se o container
-    # cair (útil em produção; em dev você pode comentar).
-    restart: unless-stopped
-
-    # Redes em que o serviço participa.
-    networks:
-      - app-network
-
-# Declaração das redes nomeadas.
-networks:
-  app-network:
-    driver: bridge
-
-# Declaração dos volumes nomeados.
 volumes:
   postgres-data:
