@@ -3,30 +3,42 @@ package com.tampieria.chatbot.service.impl;
 import com.tampieria.chatbot.dto.openai.OpenAiMessage;
 import com.tampieria.chatbot.dto.openai.OpenAiRequest;
 import com.tampieria.chatbot.dto.openai.OpenAiResponse;
+import com.tampieria.chatbot.entity.Mensagem;
+import com.tampieria.chatbot.entity.enums.RoleEnum;
+import com.tampieria.chatbot.exception.OpenAiException;
+import com.tampieria.chatbot.repository.MensagemRepository;
 import com.tampieria.chatbot.service.ChatService;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Profile;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestClient;
+import org.springframework.web.client.RestClientException;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
-import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
 
 @Service
 @Profile("!mock") // só carrega quando o perfil "mock" NÃO estiver ativo
 public class ChatServiceImpl implements ChatService {
 
+    private static final String SYSTEM_PROMPT = "Você é um assistente útil direto.";
     private final RestClient restClient;
-    private final Map<String, List<OpenAiMessage>> historicoPorSessao = new ConcurrentHashMap<>();
+    private final MensagemRepository repository;
+    private final String model;
+    private final int historicoMax;
 
-    @Value("${openai.api.model}")
-    private String model;
-
-    public ChatServiceImpl(RestClient restClient) {
+    public ChatServiceImpl(RestClient restClient,
+                           MensagemRepository repository,
+                           @Value("${openai.api.model}") String model,
+                           @Value("${chat.historic.max:20}") int historicoMax) {
         this.restClient = restClient;
+        this.repository = repository;
+        this.model = model;
+        this.historicoMax = historicoMax;
     }
 
     /**
@@ -36,24 +48,49 @@ public class ChatServiceImpl implements ChatService {
      */
     @Override
     public String enviarMensagem(String sessaoId, String mensagemUsuario) {
-        List<OpenAiMessage> historico = historicoPorSessao.computeIfAbsent(
-                sessaoId, k -> new ArrayList<>(List.of(
-                        new OpenAiMessage("system", "Você é um assistente útil direto.")
-                ))
-        );
+        // 1. salva a mensagem do usuario (transação curta, via repository)
+        repository.save(Mensagem.builder()
+                .sessaoId(sessaoId)
+                .role(RoleEnum.user)
+                .conteudo(mensagemUsuario)
+                .build());
 
-        historico.add(new OpenAiMessage("user", mensagemUsuario));
-        OpenAiRequest request = new OpenAiRequest(model, historico);
+        // 2. busca as ultimas N mensagens (ja inclui a que acabou de salvar)
+        List<Mensagem> recentes = new ArrayList<>(
+                repository.findBySessaoIdOrderByCriadoEmDescIdDesc(
+                        sessaoId, PageRequest.of(0, historicoMax)));
+        Collections.reverse(recentes);
 
-        OpenAiResponse response = restClient.post()
-                .uri("/chat/completions")
-                .contentType(MediaType.APPLICATION_JSON)
-                .body(request)
-                .retrieve()
-                .body(OpenAiResponse.class);
+        // 3. monta o payload: system + histórico
+        List<OpenAiMessage> payload = new ArrayList<>();
+        payload.add(new OpenAiMessage("system", SYSTEM_PROMPT));
+        recentes.forEach(m -> payload.add(new OpenAiMessage(m.getRole().name(), m.getConteudo())));
 
+        // 4. chama a OpenAI, sem transação aberta
+        OpenAiResponse response;
+        try {
+            response = restClient.post()
+                    .uri("/chat/completions")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .body(new OpenAiRequest(model, payload))
+                    .retrieve()
+                    .body(OpenAiResponse.class);
+        } catch (RestClientException e) {
+            throw new OpenAiException("Falha ao chamar a OpenAI: " + e.getMessage(), e);
+        }
+
+        if (response == null || response.choices() == null || response.choices().isEmpty()) {
+            throw new OpenAiException("Resposta vazia da OpenAI");
+        }
         String resposta = response.choices().get(0).message().content();
-        historico.add(new OpenAiMessage("assistant", resposta));
+
+        // 5. salva a resposta
+        repository.save(Mensagem.builder()
+                .sessaoId(sessaoId)
+                .role(RoleEnum.assistant)
+                .conteudo(resposta)
+                .build());
+
         return resposta;
     }
 }
