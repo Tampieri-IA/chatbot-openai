@@ -2,21 +2,19 @@ spring:
   application:
     name: chatbot-openai
   profiles:
-      active: mock
-      #active: default
+    active: mock
   datasource:
     url: jdbc:h2:mem:chatbotdb;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=FALSE
     driver-class-name: org.h2.Driver
     username: sa
     password:
   jpa:
-    database-plataform: org.hibernate.dialect.H2Dialect
     hibernate:
       ddl-auto: update
-    show-sql: true
+    show-sql: false
   h2:
     console:
-      enable: true
+      enabled: true
       path: /h2-console
 
 server:
@@ -34,4 +32,3 @@ springdoc:
 chat:
   historic:
     max: 20
-
