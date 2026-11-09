@@ -1,0 +1,9 @@
+spring:
+  datasource:
+    url: jdbc:postgresql://localhost:5432/${POSTGRES_DB:chatbotdb}
+    driver-class-name: org.postgresql.Driver
+    username: ${POSTGRES_USER:chatbot_user}
+    password: ${POSTGRES_PASSWORD}
+  h2:
+    console:
+      enabled: false
