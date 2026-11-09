@@ -11,7 +11,6 @@ import com.tampieria.chatbot.service.ChatService;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Profile;
 import org.springframework.data.domain.PageRequest;
-import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestClient;
@@ -25,7 +24,7 @@ import java.util.List;
 @Profile("!mock") // só carrega quando o perfil "mock" NÃO estiver ativo
 public class ChatServiceImpl implements ChatService {
 
-    private static final String SYSTEM_PROMPT = "Você é um assistente útil direto.";
+    private static final String SYSTEM_PROMPT = "Você é um assistente útil e direto.";
     private final RestClient restClient;
     private final MensagemRepository repository;
     private final String model;
@@ -41,17 +40,12 @@ public class ChatServiceImpl implements ChatService {
         this.historicoMax = historicoMax;
     }
 
-    /**
-     * @param sessaoId
-     * @param mensagemUsuario
-     * @return
-     */
     @Override
     public String enviarMensagem(String sessaoId, String mensagemUsuario) {
         // 1. salva a mensagem do usuario (transação curta, via repository)
         repository.save(Mensagem.builder()
                 .sessaoId(sessaoId)
-                .role(RoleEnum.user)
+                .role(RoleEnum.USER)
                 .conteudo(mensagemUsuario)
                 .build());
 
@@ -63,8 +57,8 @@ public class ChatServiceImpl implements ChatService {
 
         // 3. monta o payload: system + histórico
         List<OpenAiMessage> payload = new ArrayList<>();
-        payload.add(new OpenAiMessage("system", SYSTEM_PROMPT));
-        recentes.forEach(m -> payload.add(new OpenAiMessage(m.getRole().name(), m.getConteudo())));
+        payload.add(new OpenAiMessage(RoleEnum.SYSTEM.getValor(), SYSTEM_PROMPT));
+        recentes.forEach(m -> payload.add(new OpenAiMessage(m.getRole().getValor(), m.getConteudo())));
 
         // 4. chama a OpenAI, sem transação aberta
         OpenAiResponse response;
@@ -83,11 +77,14 @@ public class ChatServiceImpl implements ChatService {
             throw new OpenAiException("Resposta vazia da OpenAI");
         }
         String resposta = response.choices().get(0).message().content();
+        if (resposta == null || resposta.isBlank()) {
+            throw new OpenAiException("Resposta vazia da OpenAI");
+        }
 
         // 5. salva a resposta
         repository.save(Mensagem.builder()
                 .sessaoId(sessaoId)
-                .role(RoleEnum.assistant)
+                .role(RoleEnum.ASSISTANT)
                 .conteudo(resposta)
                 .build());
 
