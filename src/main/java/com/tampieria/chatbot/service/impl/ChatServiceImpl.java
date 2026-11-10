@@ -33,7 +33,8 @@ public class ChatServiceImpl implements ChatService {
     public ChatServiceImpl(RestClient restClient,
                            MensagemRepository repository,
                            @Value("${openai.api.model}") String model,
-                           @Value("${chat.historic.max:20}") int historicoMax) {
+                           @Value("${chat.historic.max:20}") int historicoMax,
+                           @Value("${chat.historic.max-chars:8000}") int maxCaracteres) {
         this.restClient = restClient;
         this.repository = repository;
         this.model = model;

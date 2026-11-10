@@ -64,7 +64,7 @@ class ChatServiceImplTest {
         when(repository.findBySessaoIdOrderByCriadoEmDescIdDesc(anyString(), any(Pageable.class)))
                 .thenReturn(List.of());
 
-        chatService = new ChatServiceImpl(restClient, repository, "gpt-4o-mini", 20);
+        chatService = new ChatServiceImpl(restClient, repository, "gpt-4o-mini", 20, 8000);
     }
 
     private OpenAiResponse respostaCom(String texto) {
@@ -176,11 +176,32 @@ class ChatServiceImplTest {
     void deveUsarLimiteDeHistoricoConfiguradoLimite5() {
         when(responseSpec.body(OpenAiResponse.class)).thenReturn(respostaCom("ok"));
 
-        ChatServiceImpl servicoComLimite5 = new ChatServiceImpl(restClient, repository, "gpt-4o-mini", 5);
+        ChatServiceImpl servicoComLimite5 = new ChatServiceImpl(restClient, repository, "gpt-4o-mini", 5, 8000);
         servicoComLimite5.enviarMensagem("s", "oi");
 
         ArgumentCaptor<Pageable> captor = ArgumentCaptor.forClass(Pageable.class);
         verify(repository).findBySessaoIdOrderByCriadoEmDescIdDesc(eq("s"), captor.capture());
         assertThat(captor.getValue().getPageSize()).isEqualTo(5);
+    }
+
+    @Test
+    void deveLimitarPayloadPorCaracteres() {
+        ChatServiceImpl servicoComLimitePequeno =
+                new ChatServiceImpl(restClient, repository, "gpt-4o-mini", 20, 30);
+
+        Mensagem antiga = Mensagem.builder().sessaoId("s").role(RoleEnum.USER)
+                .conteudo("a".repeat(40)).build();
+        Mensagem recente = Mensagem.builder().sessaoId("s").role(RoleEnum.USER)
+                .conteudo("pergunta curta").build();
+        // repository devolve em ordem decrescente
+        when(repository.findBySessaoIdOrderByCriadoEmDescIdDesc(anyString(), any(Pageable.class)))
+                .thenReturn(List.of(recente, antiga));
+        when(responseSpec.body(OpenAiResponse.class)).thenReturn(respostaCom("ok"));
+
+        servicoComLimitePequeno.enviarMensagem("s", "pergunta curta");
+
+        assertThat(requestEnviado.messages())
+                .extracting(OpenAiMessage::content)
+                .doesNotContain("a".repeat(40));
     }
 }
