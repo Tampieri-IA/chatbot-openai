@@ -25,12 +25,12 @@ public class HistoricoLimitador {
                 .filter(m -> !ROLE_SYSTEM.equals(m.role()))
                 .toList();
 
-        int total = sistema.stream().mapToInt(m -> m.content().length()).sum();
+        int total = sistema.stream().mapToInt(HistoricoLimitador::getLength).sum();
         Deque<OpenAiMessage> mantidas = new ArrayDeque<>();
 
         // percorre da mais recente para a mais antiga
         for (int i = conversa.size() - 1; i >= 0; i--) {
-            int tamanho = conversa.get(i).content().length();
+            int tamanho = getLength(conversa.get(i));
             // a última mensagem (primeira da iteração) é sempre mantida
             if (total + tamanho > maxCaracteres && !mantidas.isEmpty()) {
                 break;
@@ -42,5 +42,9 @@ public class HistoricoLimitador {
         List<OpenAiMessage> resultado = new ArrayList<>(sistema);
         resultado.addAll(mantidas);
         return resultado;
+    }
+
+    private static int getLength(OpenAiMessage m) {
+        return m.content().length();
     }
 }
