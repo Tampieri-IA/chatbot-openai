@@ -8,6 +8,7 @@ import com.tampieria.chatbot.entity.enums.RoleEnum;
 import com.tampieria.chatbot.exception.OpenAiException;
 import com.tampieria.chatbot.repository.MensagemRepository;
 import com.tampieria.chatbot.service.ChatService;
+import com.tampieria.chatbot.service.HistoricoLimitador;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Profile;
 import org.springframework.data.domain.PageRequest;
@@ -29,6 +30,7 @@ public class ChatServiceImpl implements ChatService {
     private final MensagemRepository repository;
     private final String model;
     private final int historicoMax;
+    private final HistoricoLimitador limitador;
 
     public ChatServiceImpl(RestClient restClient,
                            MensagemRepository repository,
@@ -39,6 +41,7 @@ public class ChatServiceImpl implements ChatService {
         this.repository = repository;
         this.model = model;
         this.historicoMax = historicoMax;
+        this.limitador = new HistoricoLimitador(maxCaracteres);
     }
 
     @Override
@@ -67,7 +70,7 @@ public class ChatServiceImpl implements ChatService {
             response = restClient.post()
                     .uri("/chat/completions")
                     .contentType(MediaType.APPLICATION_JSON)
-                    .body(new OpenAiRequest(model, payload))
+                    .body(new OpenAiRequest(model, limitador.limitar(payload)))
                     .retrieve()
                     .body(OpenAiResponse.class);
         } catch (RestClientException e) {
