@@ -32,3 +32,4 @@ springdoc:
 chat:
   historic:
     max: 20
+    max-chars: 8000
